@@ -1,0 +1,653 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ page_title }} - Agent Screen Lock Dashboard</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f5f5f5;
+            line-height: 1.6;
+        }
+
+        .header {
+            background: #2c3e50;
+            color: white;
+            padding: 1rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .header h1 {
+            font-size: 1.5rem;
+        }
+
+        .nav {
+            background: #34495e;
+            padding: 1rem 2rem;
+        }
+
+        .nav a {
+            color: #ecf0f1;
+            text-decoration: none;
+            margin-right: 2rem;
+            padding: 0.5rem 1rem;
+            border-radius: 4px;
+            transition: background 0.3s;
+        }
+
+        .nav a:hover,
+        .nav a.active {
+            background: #3498db;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 2rem auto;
+            padding: 0 2rem;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+
+        .stat-card {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            border-left: 4px solid #3498db;
+        }
+
+        .stat-card h3 {
+            color: #2c3e50;
+            margin-bottom: 0.5rem;
+        }
+
+        .stat-card .number {
+            font-size: 2rem;
+            font-weight: bold;
+            color: #3498db;
+        }
+
+        .content-card {
+            background: white;
+            padding: 2rem;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            margin-bottom: 2rem;
+        }
+
+        .table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 1rem;
+        }
+
+        .table th,
+        .table td {
+            padding: 0.75rem;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+
+        .table th {
+            background: #f8f9fa;
+            font-weight: 600;
+        }
+
+        .badge {
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.875rem;
+            font-weight: 500;
+        }
+
+        .badge.online {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .badge.offline {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .badge.locked {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        .btn {
+            background: #3498db;
+            color: white;
+            padding: 0.5rem 1rem;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-block;
+        }
+
+        .btn:hover {
+            background: #2980b9;
+        }
+
+        /* Global Notification System */
+        .notification-center {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 10000;
+            max-width: 400px;
+        }
+
+        .notification {
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            margin-bottom: 10px;
+            padding: 16px;
+            border-left: 4px solid #3498db;
+            animation: slideIn 0.3s ease-out;
+            position: relative;
+        }
+
+        .notification.success {
+            border-left-color: #27ae60;
+        }
+
+        .notification.warning {
+            border-left-color: #f39c12;
+        }
+
+        .notification.error {
+            border-left-color: #e74c3c;
+        }
+
+        .notification.info {
+            border-left-color: #3498db;
+        }
+
+        .notification-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+
+        .notification-title {
+            font-weight: 600;
+            font-size: 14px;
+        }
+
+        .notification-close {
+            background: none;
+            border: none;
+            font-size: 18px;
+            cursor: pointer;
+            color: #999;
+            padding: 0;
+            line-height: 1;
+        }
+
+        .notification-close:hover {
+            color: #666;
+        }
+
+        .notification-body {
+            font-size: 13px;
+            color: #666;
+            line-height: 1.4;
+        }
+
+        .notification-time {
+            font-size: 11px;
+            color: #999;
+            margin-top: 8px;
+        }
+
+        @keyframes slideIn {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+
+        /* Real-time Status Indicators */
+        .status-indicator {
+            position: relative;
+            display: inline-block;
+        }
+
+        .status-indicator.live::after {
+            content: '';
+            position: absolute;
+            top: -2px;
+            right: -2px;
+            width: 8px;
+            height: 8px;
+            background: #27ae60;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% {
+                opacity: 1;
+                transform: scale(1);
+            }
+
+            50% {
+                opacity: 0.5;
+                transform: scale(1.2);
+            }
+
+            100% {
+                opacity: 1;
+                transform: scale(1);
+            }
+        }
+
+        /* Loading States */
+        .loading-spinner {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid #f3f3f3;
+            border-top: 2px solid #3498db;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-right: 8px;
+        }
+
+        @keyframes spin {
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+
+        /* Connection Status */
+        .connection-status {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: white;
+            padding: 8px 16px;
+            border-radius: 20px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            font-size: 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            z-index: 9999;
+        }
+
+        .connection-status.connected {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .connection-status.disconnected {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .connection-status.connecting {
+            background: #fff3cd;
+            color: #856404;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="header">
+        <h1>Agent Screen Lock Dashboard</h1>
+        <div>
+            Welcome, {{ user.full_name|default:user.username }} ({{ user.get_role_display }})
+            <a href="{% url 'logout' %}"
+                style="margin-left: 1rem; color: #ecf0f1; text-decoration: none; padding: 0.5rem 1rem; background: rgba(255,255,255,0.1); border-radius: 4px;">Logout</a>
+        </div>
+    </div>
+
+    <nav class="nav">
+        <a href="{% url 'dashboard:dashboard' %}" {% if request.resolver_match.url_name == 'dashboard' %} class="active"
+            {%endif %}>Dashboard</a>
+        <a href="{% url 'dashboard:devices' %}" {% if request.resolver_match.url_name == 'devices' %} class="active"
+            {%endif %}>Devices</a>
+        <a href="{% url 'dashboard:actions' %}" {% if request.resolver_match.url_name == 'actions' %} class="active"
+            {%endif %}>Actions</a>
+        <a href="{% url 'dashboard:events' %}" {% if request.resolver_match.url_name == 'events' %} class="active" {%endif%}>Events</a>
+        <a href="{% url 'dashboard:forensics' %}" {% if request.resolver_match.url_name == 'forensics' %} class="active"
+            {%endif %}>Forensics</a>
+        <a href="{% url 'dashboard:policies' %}" {% if request.resolver_match.url_name == 'policies' %} class="active"
+            {%endif %}>Policies</a>
+        {% if user.is_superuser %}
+        <a href="/admin/">Admin Panel</a>
+        {% endif %}
+    </nav>
+    <div class="container">
+        {% block content %}
+        {% endblock %}
+    </div>
+
+    <!-- Global Notification Center -->
+    <div id="notification-center" class="notification-center"></div>
+
+    <!-- Connection Status Indicator -->
+    <div id="connection-status" class="connection-status connecting">
+        <div class="loading-spinner"></div>
+        <span>Connecting...</span>
+    </div>
+
+    <!-- Global JavaScript for Real-time Updates -->
+    <script>
+        // Global Real-time Update System
+        class RealTimeManager {
+            constructor() {
+                this.isConnected = false;
+                this.reconnectAttempts = 0;
+                this.maxReconnectAttempts = 5;
+                this.basePollingInterval = 5000; // 5 seconds
+                this.currentPollingInterval = this.basePollingInterval;
+                this.pollingTimeouts = {};
+                this.lastUpdateTimes = {};
+                this.init();
+            }
+
+            init() {
+                this.updateConnectionStatus('connecting');
+                this.startGlobalPolling();
+                this.setupVisibilityHandler();
+                this.setupBeforeUnloadHandler();
+            }
+
+            // Connection Status Management
+            updateConnectionStatus(status) {
+                const statusElement = document.getElementById('connection-status');
+                const statusMap = {
+                    'connected': {
+                        text: 'Connected',
+                        class: 'connected',
+                        html: '<div style="width: 8px; height: 8px; background: #27ae60; border-radius: 50%; animation: pulse 2s infinite;"></div><span>Connected</span>'
+                    },
+                    'connecting': {
+                        text: 'Connecting...',
+                        class: 'connecting',
+                        html: '<div class="loading-spinner"></div><span>Connecting...</span>'
+                    },
+                    'disconnected': {
+                        text: 'Connection Lost',
+                        class: 'disconnected',
+                        html: '<div style="width: 8px; height: 8px; background: #e74c3c; border-radius: 50%;"></div><span>Connection Lost</span>'
+                    }
+                };
+
+                if (statusMap[status]) {
+                    statusElement.className = `connection-status ${statusMap[status].class}`;
+                    statusElement.innerHTML = statusMap[status].html;
+                    this.isConnected = (status === 'connected');
+
+                    if (status === 'connected') {
+                        this.reconnectAttempts = 0;
+                        this.currentPollingInterval = this.basePollingInterval;
+                    }
+                }
+            }
+
+            // Global Notification System
+            showNotification(type, title, message, duration = 5000) {
+                const notification = document.createElement('div');
+                notification.className = `notification ${type}`;
+
+                const notificationId = 'notification-' + Date.now();
+                notification.id = notificationId;
+
+                notification.innerHTML = `
+                    <div class="notification-header">
+                        <div class="notification-title">${title}</div>
+                        <button class="notification-close" onclick="realTimeManager.closeNotification('${notificationId}')">&times;</button>
+                    </div>
+                    <div class="notification-body">${message}</div>
+                    <div class="notification-time">${new Date().toLocaleTimeString()}</div>
+                `;
+
+                document.getElementById('notification-center').appendChild(notification);
+
+                // Auto-remove notification after duration
+                if (duration > 0) {
+                    setTimeout(() => {
+                        this.closeNotification(notificationId);
+                    }, duration);
+                }
+
+                return notificationId;
+            }
+
+            closeNotification(notificationId) {
+                const notification = document.getElementById(notificationId);
+                if (notification) {
+                    notification.style.animation = 'slideOut 0.3s ease-in';
+                    setTimeout(() => {
+                        if (notification.parentNode) {
+                            notification.parentNode.removeChild(notification);
+                        }
+                    }, 300);
+                }
+            }
+
+            // AJAX Request with Error Handling
+            async makeRequest(url, options = {}) {
+                try {
+                    this.updateConnectionStatus('connecting');
+
+                    const response = await fetch(url, {
+                        ...options,
+                        headers: {
+                            'X-Requested-With': 'XMLHttpRequest',
+                            'Content-Type': 'application/json',
+                            ...options.headers
+                        }
+                    });
+
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                    }
+
+                    this.updateConnectionStatus('connected');
+                    return await response.json();
+                } catch (error) {
+                    console.error('Request failed:', error);
+                    this.handleConnectionError(error);
+                    throw error;
+                }
+            }
+
+            handleConnectionError(error) {
+                this.updateConnectionStatus('disconnected');
+                this.reconnectAttempts++;
+
+                if (this.reconnectAttempts <= this.maxReconnectAttempts) {
+                    this.currentPollingInterval = Math.min(
+                        this.basePollingInterval * Math.pow(2, this.reconnectAttempts),
+                        30000 // Max 30 seconds
+                    );
+
+                    this.showNotification(
+                        'warning',
+                        'Connection Issues',
+                        `Attempting to reconnect... (${this.reconnectAttempts}/${this.maxReconnectAttempts})`,
+                        3000
+                    );
+                } else {
+                    this.showNotification(
+                        'error',
+                        'Connection Failed',
+                        'Unable to connect to server. Please refresh the page.',
+                        0 // Persistent notification
+                    );
+                }
+            }
+
+            // Global Polling System
+            startGlobalPolling() {
+                // Poll for system-wide updates
+                this.pollSystemStatus();
+
+                // Poll for notifications
+                this.pollNotifications();
+            }
+
+            async pollSystemStatus() {
+                const pollFunction = async () => {
+                    try {
+                        const data = await this.makeRequest('/dashboard/api/system-status/');
+                        this.handleSystemStatusUpdate(data);
+                    } catch (error) {
+                        // Error handling is done in makeRequest
+                    }
+                };
+
+                pollFunction();
+                this.pollingTimeouts['systemStatus'] = setTimeout(() => {
+                    this.pollSystemStatus();
+                }, this.currentPollingInterval);
+            }
+
+            async pollNotifications() {
+                const pollFunction = async () => {
+                    try {
+                        const data = await this.makeRequest('/dashboard/api/notifications/');
+                        this.handleNotificationsUpdate(data);
+                    } catch (error) {
+                        // Error handling is done in makeRequest
+                    }
+                };
+
+                this.pollingTimeouts['notifications'] = setTimeout(() => {
+                    this.pollNotifications();
+                }, 10000); // Check notifications every 10 seconds
+            }
+
+            handleSystemStatusUpdate(data) {
+                // Update last update time
+                this.lastUpdateTimes['systemStatus'] = Date.now();
+
+                // Trigger custom event for components to listen to
+                window.dispatchEvent(new CustomEvent('systemStatusUpdate', { detail: data }));
+            }
+
+            handleNotificationsUpdate(data) {
+                if (data && data.notifications) {
+                    data.notifications.forEach(notification => {
+                        if (!this.isNotificationShown(notification.id)) {
+                            this.showNotification(
+                                notification.type,
+                                notification.title,
+                                notification.message,
+                                notification.duration
+                            );
+                            this.markNotificationAsShown(notification.id);
+                        }
+                    });
+                }
+            }
+
+            isNotificationShown(notificationId) {
+                return sessionStorage.getItem(`notification_${notificationId}`) === 'shown';
+            }
+
+            markNotificationAsShown(notificationId) {
+                sessionStorage.setItem(`notification_${notificationId}`, 'shown');
+            }
+
+            // Page Visibility Handler
+            setupVisibilityHandler() {
+                document.addEventListener('visibilitychange', () => {
+                    if (document.hidden) {
+                        // Page is hidden, reduce polling frequency
+                        this.pausePolling();
+                    } else {
+                        // Page is visible, resume normal polling
+                        this.resumePolling();
+                    }
+                });
+            }
+
+            setupBeforeUnloadHandler() {
+                window.addEventListener('beforeunload', () => {
+                    this.stopAllPolling();
+                });
+            }
+
+            pausePolling() {
+                Object.values(this.pollingTimeouts).forEach(timeout => {
+                    clearTimeout(timeout);
+                });
+                this.pollingTimeouts = {};
+            }
+
+            resumePolling() {
+                this.startGlobalPolling();
+            }
+
+            stopAllPolling() {
+                this.pausePolling();
+            }
+
+            // Utility function for components
+            subscribeToUpdates(eventType, callback) {
+                window.addEventListener(eventType, callback);
+            }
+
+            unsubscribeFromUpdates(eventType, callback) {
+                window.removeEventListener(eventType, callback);
+            }
+        }
+
+        // Initialize global real-time manager
+        const realTimeManager = new RealTimeManager();
+
+        // Expose to global scope for use in other scripts
+        window.realTimeManager = realTimeManager;
+
+        // Add slideOut animation CSS
+        const slideOutStyle = document.createElement('style');
+        slideOutStyle.textContent = `
+            @keyframes slideOut {
+                from {
+                    transform: translateX(0);
+                    opacity: 1;
+                }
+                to {
+                    transform: translateX(100%);
+                    opacity: 0;
+                }
+            }
+        `;
+        document.head.appendChild(slideOutStyle);
+    </script>
+</body>
+
+</html>

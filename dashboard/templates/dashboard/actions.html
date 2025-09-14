@@ -1,0 +1,787 @@
+{% extends 'dashboard/base.html' %}
+
+{% block content %}
+<div class="content-card">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+        <div>
+            <h2>Device Actions Monitor</h2>
+            <p>Monitor and track all device actions in real-time.</p>
+        </div>
+        <div>
+            <button class="btn btn-primary" onclick="refreshActions()" id="refreshActionsBtn">
+                🔄 Refresh
+            </button>
+            <button class="btn btn-secondary" onclick="exportActions()">
+                📥 Export
+            </button>
+        </div>
+    </div>
+
+    <!-- Action Statistics -->
+    <div class="stats-grid" style="margin-bottom: 20px;">
+        <div class="stat-card">
+            <h3 id="totalActions">{{ total_actions }}</h3>
+            <p>Total Actions</p>
+        </div>
+        <div class="stat-card">
+            <h3 id="pendingActions">{{ pending_actions }}</h3>
+            <p>Pending</p>
+        </div>
+        <div class="stat-card">
+            <h3 id="completedActions">{{ completed_today }}</h3>
+            <p>Completed Today</p>
+        </div>
+        <div class="stat-card">
+            <h3 id="failedActions">{{ failed_today }}</h3>
+            <p>Failed Today</p>
+        </div>
+    </div>
+
+    <!-- Filters -->
+    <div class="filter-bar" style="margin-bottom: 20px;">
+        <select id="actionTypeFilter" onchange="filterActions()">
+            <option value="">All Actions</option>
+            <option value="lock">Lock</option>
+            <option value="unlock">Unlock</option>
+            <option value="screenshot">Screenshot</option>
+            <option value="restart">Restart</option>
+        </select>
+
+        <select id="statusFilter" onchange="filterActions()">
+            <option value="">All Status</option>
+            <option value="pending">Pending</option>
+            <option value="sent">Sent</option>
+            <option value="acknowledged">Acknowledged</option>
+            <option value="completed">Completed</option>
+            <option value="failed">Failed</option>
+            <option value="timeout">Timeout</option>
+        </select>
+
+        <select id="deviceFilter" onchange="filterActions()">
+            <option value="">All Devices</option>
+            {% for device in devices %}
+            <option value="{{ device.device_id }}">{{ device.name }}</option>
+            {% endfor %}
+        </select>
+
+        <input type="date" id="dateFilter" onchange="filterActions()" value="{{ today }}">
+
+        <input type="text" id="searchInput" placeholder="Search by user or device..." onkeyup="filterActions()">
+    </div>
+
+    <!-- Actions Table -->
+    <div class="table-container">
+        <table class="table" id="actionsTable">
+            <thead>
+                <tr>
+                    <th>Time</th>
+                    <th>Device</th>
+                    <th>Action</th>
+                    <th>Initiated By</th>
+                    <th>Status</th>
+                    <th>Duration</th>
+                    <th>Details</th>
+                </tr>
+            </thead>
+            <tbody id="actionsTableBody">
+                {% for action in actions %}
+                <tr data-action-id="{{ action.id }}" class="action-row">
+                    <td>
+                        <div>{{ action.created_at|date:"H:i:s" }}</div>
+                        <small>{{ action.created_at|date:"M d" }}</small>
+                    </td>
+                    <td>
+                        <strong>{{ action.device.name }}</strong>
+                        <br><small>{{ action.device.hostname }}</small>
+                    </td>
+                    <td>
+                        <span class="action-type {{ action.action_type }}">
+                            {% if action.action_type == 'lock' %}🔒 Lock
+                            {% elif action.action_type == 'unlock' %}🔓 Unlock
+                            {% elif action.action_type == 'screenshot' %}📸 Screenshot
+                            {% elif action.action_type == 'restart' %}🔄 Restart
+                            {% else %}{{ action.action_type|title }}{% endif %}
+                        </span>
+                    </td>
+                    <td>
+                        {% if action.initiated_by %}
+                        {{ action.initiated_by.username }}
+                        {% else %}
+                        System
+                        {% endif %}
+                    </td>
+                    <td>
+                        <span class="action-status {{ action.status }}" id="status-{{ action.id }}">
+                            {{ action.get_status_display }}
+                        </span>
+                        <div class="progress-bar" id="progress-{{ action.id }}">
+                            <div class="progress-fill {{ action.status }}"></div>
+                        </div>
+                    </td>
+                    <td>
+                        <div id="duration-{{ action.id }}">
+                            {% if action.completed_at %}
+                            {{ action.completed_at|timesince:action.created_at }}
+                            {% else %}
+                            <span class="text-muted">-</span>
+                            {% endif %}
+                        </div>
+                    </td>
+                    <td>
+                        <button class="btn btn-sm btn-info" onclick="showActionDetails({{ action.id }})">
+                            ℹ️ Details
+                        </button>
+                        {% if action.status == 'pending' or action.status == 'sent' %}
+                        <button class="btn btn-sm btn-danger" onclick="cancelAction({{ action.id }})">
+                            ❌ Cancel
+                        </button>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="7">No actions found</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Pagination -->
+    {% if actions.has_other_pages %}
+    <div class="pagination-container">
+        <div class="pagination">
+            {% if actions.has_previous %}
+            <a href="?page=1" class="page-link">First</a>
+            <a href="?page={{ actions.previous_page_number }}" class="page-link">Previous</a>
+            {% endif %}
+
+            <span class="current-page">
+                Page {{ actions.number }} of {{ actions.paginator.num_pages }}
+            </span>
+
+            {% if actions.has_next %}
+            <a href="?page={{ actions.next_page_number }}" class="page-link">Next</a>
+            <a href="?page={{ actions.paginator.num_pages }}" class="page-link">Last</a>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Action Details Modal -->
+<div id="actionDetailsModal" class="modal" style="display: none;">
+    <div class="modal-content">
+        <span class="close" onclick="closeActionDetailsModal()">&times;</span>
+        <h3>Action Details</h3>
+        <div id="actionDetailsContent">
+            <!-- Will be populated by AJAX -->
+        </div>
+    </div>
+</div>
+
+<style>
+    .table-container {
+        max-height: 600px;
+        overflow-y: auto;
+        border: 1px solid #dee2e6;
+        border-radius: 0.25rem;
+    }
+
+    .action-type {
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-size: 0.875em;
+        font-weight: bold;
+        display: inline-block;
+    }
+
+    .action-type.lock {
+        background: #dc3545;
+        color: white;
+    }
+
+    .action-type.unlock {
+        background: #28a745;
+        color: white;
+    }
+
+    .action-type.screenshot {
+        background: #17a2b8;
+        color: white;
+    }
+
+    .action-type.restart {
+        background: #fd7e14;
+        color: white;
+    }
+
+    .progress-bar {
+        width: 100%;
+        height: 4px;
+        background: #e9ecef;
+        border-radius: 2px;
+        margin-top: 4px;
+        overflow: hidden;
+    }
+
+    .progress-fill {
+        height: 100%;
+        transition: width 0.3s ease;
+    }
+
+    .progress-fill.pending {
+        width: 20%;
+        background: #ffc107;
+    }
+
+    .progress-fill.sent {
+        width: 40%;
+        background: #17a2b8;
+    }
+
+    .progress-fill.acknowledged {
+        width: 70%;
+        background: #20c997;
+    }
+
+    .progress-fill.completed {
+        width: 100%;
+        background: #28a745;
+    }
+
+    .progress-fill.failed {
+        width: 100%;
+        background: #dc3545;
+    }
+
+    .progress-fill.timeout {
+        width: 100%;
+        background: #6c757d;
+    }
+
+    .pagination-container {
+        display: flex;
+        justify-content: center;
+        margin-top: 20px;
+    }
+
+    .pagination {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+
+    .page-link {
+        padding: 8px 12px;
+        text-decoration: none;
+        border: 1px solid #dee2e6;
+        border-radius: 4px;
+        color: #007bff;
+    }
+
+    .page-link:hover {
+        background: #e9ecef;
+    }
+
+    .current-page {
+        padding: 8px 12px;
+        font-weight: bold;
+    }
+
+    .filter-bar {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        align-items: center;
+    }
+
+    .filter-bar select,
+    .filter-bar input {
+        padding: 8px;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+    }
+
+    @keyframes pulse {
+        0% {
+            opacity: 1;
+        }
+
+        50% {
+            opacity: 0.5;
+        }
+
+        100% {
+            opacity: 1;
+        }
+    }
+
+    .action-row.updating {
+        animation: pulse 1s infinite;
+    }
+</style>
+
+<script>
+    let autoRefreshInterval = null;
+
+    function refreshActions() {
+        const btn = document.getElementById('refreshActionsBtn');
+        btn.innerHTML = '🔄 Refreshing...';
+        btn.disabled = true;
+
+        // Refresh statistics
+        updateActionStatistics();
+
+        // Refresh action statuses
+        document.querySelectorAll('.action-row').forEach(row => {
+            const actionId = row.getAttribute('data-action-id');
+            updateActionStatus(actionId);
+        });
+
+        setTimeout(() => {
+            btn.innerHTML = '🔄 Refresh';
+            btn.disabled = false;
+            showNotification('Actions refreshed', 'success');
+        }, 1000);
+    }
+
+    function updateActionStatistics() {
+        fetch('/api/devices/actions/stats/')
+            .then(response => response.json())
+            .then(data => {
+                document.getElementById('totalActions').textContent = data.total || '0';
+                document.getElementById('pendingActions').textContent = data.pending || '0';
+                document.getElementById('completedActions').textContent = data.completed_today || '0';
+                document.getElementById('failedActions').textContent = data.failed_today || '0';
+            })
+            .catch(error => console.error('Error updating statistics:', error));
+    }
+
+    function updateActionStatus(actionId) {
+        fetch(`/api/devices/actions/${actionId}/status/`)
+            .then(response => response.json())
+            .then(data => {
+                const statusEl = document.getElementById(`status-${actionId}`);
+                const progressEl = document.getElementById(`progress-${actionId}`);
+                const durationEl = document.getElementById(`duration-${actionId}`);
+
+                if (statusEl) {
+                    statusEl.textContent = data.status;
+                    statusEl.className = `action-status ${data.status}`;
+                }
+
+                if (progressEl) {
+                    const progressFill = progressEl.querySelector('.progress-fill');
+                    progressFill.className = `progress-fill ${data.status}`;
+                }
+
+                if (durationEl && data.completed_at) {
+                    const duration = calculateDuration(data.created_at, data.completed_at);
+                    durationEl.innerHTML = duration;
+                }
+            })
+            .catch(error => console.error('Error updating action status:', error));
+    }
+
+    function showActionDetails(actionId) {
+        fetch(`/api/devices/actions/${actionId}/`)
+            .then(response => response.json())
+            .then(action => {
+                const content = `
+            <div class="action-details">
+                <div class="detail-section">
+                    <h4>Basic Information</h4>
+                    <p><strong>ID:</strong> ${action.id}</p>
+                    <p><strong>Action Type:</strong> ${action.action_type}</p>
+                    <p><strong>Device:</strong> ${action.device.name} (${action.device.hostname})</p>
+                    <p><strong>Initiated By:</strong> ${action.initiated_by ? action.initiated_by.username : 'System'}</p>
+                    <p><strong>Status:</strong> <span class="action-status ${action.status}">${action.status}</span></p>
+                </div>
+                
+                <div class="detail-section">
+                    <h4>Timestamps</h4>
+                    <p><strong>Created:</strong> ${formatDateTime(action.created_at)}</p>
+                    <p><strong>Updated:</strong> ${formatDateTime(action.updated_at)}</p>
+                    ${action.completed_at ? `<p><strong>Completed:</strong> ${formatDateTime(action.completed_at)}</p>` : ''}
+                </div>
+                
+                ${action.reason ? `
+                <div class="detail-section">
+                    <h4>Reason</h4>
+                    <p>${action.reason}</p>
+                </div>
+                ` : ''}
+                
+                ${action.metadata && Object.keys(action.metadata).length > 0 ? `
+                <div class="detail-section">
+                    <h4>Metadata</h4>
+                    <pre>${JSON.stringify(action.metadata, null, 2)}</pre>
+                </div>
+                ` : ''}
+            </div>
+        `;
+                document.getElementById('actionDetailsContent').innerHTML = content;
+                document.getElementById('actionDetailsModal').style.display = 'block';
+            })
+            .catch(error => {
+                showNotification('Error loading action details: ' + error.message, 'error');
+            });
+    }
+
+    function closeActionDetailsModal() {
+        document.getElementById('actionDetailsModal').style.display = 'none';
+    }
+
+    function cancelAction(actionId) {
+        if (confirm('Are you sure you want to cancel this action?')) {
+            fetch(`/api/devices/actions/${actionId}/`, {
+                method: 'PATCH',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': '{{ csrf_token }}'
+                },
+                body: JSON.stringify({
+                    status: 'cancelled'
+                })
+            })
+                .then(response => response.json())
+                .then(data => {
+                    showNotification('Action cancelled successfully', 'success');
+                    updateActionStatus(actionId);
+                })
+                .catch(error => {
+                    showNotification('Error cancelling action: ' + error.message, 'error');
+                });
+        }
+    }
+
+    function filterActions() {
+        const actionTypeFilter = document.getElementById('actionTypeFilter').value.toLowerCase();
+        const statusFilter = document.getElementById('statusFilter').value.toLowerCase();
+        const deviceFilter = document.getElementById('deviceFilter').value;
+        const dateFilter = document.getElementById('dateFilter').value;
+        const searchInput = document.getElementById('searchInput').value.toLowerCase();
+
+        const rows = document.querySelectorAll('.action-row');
+
+        rows.forEach(row => {
+            const actionType = row.children[2].textContent.toLowerCase();
+            const device = row.children[1].textContent.toLowerCase();
+            const status = row.children[4].textContent.toLowerCase();
+            const user = row.children[3].textContent.toLowerCase();
+            const dateCell = row.children[0].querySelector('small').textContent;
+
+            const matchesActionType = !actionTypeFilter || actionType.includes(actionTypeFilter);
+            const matchesStatus = !statusFilter || status.includes(statusFilter);
+            const matchesDevice = !deviceFilter || row.children[1].querySelector('strong').textContent === deviceFilter;
+            const matchesSearch = !searchInput || device.includes(searchInput) || user.includes(searchInput);
+            const matchesDate = !dateFilter || dateCell.includes(formatDateForFilter(dateFilter));
+
+            row.style.display = matchesActionType && matchesStatus && matchesDevice && matchesSearch && matchesDate ? '' : 'none';
+        });
+    }
+
+    function exportActions() {
+        const filters = {
+            action_type: document.getElementById('actionTypeFilter').value,
+            status: document.getElementById('statusFilter').value,
+            device: document.getElementById('deviceFilter').value,
+            date: document.getElementById('dateFilter').value,
+            search: document.getElementById('searchInput').value
+        };
+
+        const queryString = Object.entries(filters)
+            .filter(([key, value]) => value)
+            .map(([key, value]) => `${key}=${encodeURIComponent(value)}`)
+            .join('&');
+
+        window.open(`/api/devices/actions/export/?${queryString}`, '_blank');
+    }
+
+    function calculateDuration(startTime, endTime) {
+        const start = new Date(startTime);
+        const end = new Date(endTime);
+        const diffMs = end - start;
+        const diffSecs = Math.floor(diffMs / 1000);
+
+        if (diffSecs < 60) return `${diffSecs}s`;
+        const diffMins = Math.floor(diffSecs / 60);
+        if (diffMins < 60) return `${diffMins}m ${diffSecs % 60}s`;
+        const diffHours = Math.floor(diffMins / 60);
+        return `${diffHours}h ${diffMins % 60}m`;
+    }
+
+    function formatDateTime(dateString) {
+        return new Date(dateString).toLocaleString();
+    }
+
+    function formatDateForFilter(dateString) {
+        const date = new Date(dateString);
+        return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    }
+
+    function showNotification(message, type = 'info') {
+        const notification = document.createElement('div');
+        notification.className = `notification ${type}`;
+        notification.textContent = message;
+        notification.style.cssText = `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        padding: 15px 20px;
+        border-radius: 4px;
+        color: white;
+        z-index: 1001;
+        font-weight: bold;
+    `;
+
+        const colors = {
+            'success': '#28a745',
+            'error': '#dc3545',
+            'warning': '#ffc107',
+            'info': '#17a2b8'
+        };
+        notification.style.backgroundColor = colors[type] || colors.info;
+
+        document.body.appendChild(notification);
+
+        setTimeout(() => {
+            if (notification.parentNode) {
+                notification.parentNode.removeChild(notification);
+            }
+        }, 3000);
+    }
+
+    // Initialize page
+    document.addEventListener('DOMContentLoaded', function () {
+        // Subscribe to real-time updates
+        if (window.realTimeManager) {
+            window.realTimeManager.subscribeToUpdates('systemStatusUpdate', handleSystemStatusUpdate);
+        }
+
+        // Start auto-refresh every 10 seconds (fallback if real-time manager fails)
+        autoRefreshInterval = setInterval(() => {
+            if (!window.realTimeManager || !window.realTimeManager.isConnected) {
+                document.querySelectorAll('.action-row').forEach(row => {
+                    const actionId = row.getAttribute('data-action-id');
+                    const status = row.querySelector('.action-status').textContent.toLowerCase();
+
+                    // Only update pending/sent actions
+                    if (status === 'pending' || status === 'sent' || status === 'acknowledged') {
+                        updateActionStatus(actionId);
+                    }
+                });
+            }
+        }, 10000);
+
+        // Update statistics every 30 seconds (fallback)
+        setInterval(() => {
+            if (!window.realTimeManager || !window.realTimeManager.isConnected) {
+                updateActionStatistics();
+            }
+        }, 30000);
+    });
+
+    // Handle real-time system status updates
+    function handleSystemStatusUpdate(event) {
+        const data = event.detail;
+
+        if (data.actions) {
+            // Update action statistics with animation
+            updateStatWithAnimation('totalActions', data.actions.total || 0);
+            updateStatWithAnimation('pendingActions', data.actions.pending);
+            updateStatWithAnimation('completedActions', data.actions.completed_today || 0);
+            updateStatWithAnimation('failedActions', data.actions.failed_today);
+
+            // Update action table with recent actions
+            if (data.actions.recent) {
+                updateActionTableFromRecentActions(data.actions.recent);
+            }
+        }
+
+        // Check for action status changes
+        checkForActionChanges(data);
+    }
+
+    function updateStatWithAnimation(elementId, newValue) {
+        const element = document.getElementById(elementId);
+        const currentValue = parseInt(element.textContent) || 0;
+
+        if (currentValue !== newValue) {
+            element.style.transform = 'scale(1.1)';
+            element.style.color = '#3498db';
+            element.textContent = newValue;
+
+            setTimeout(() => {
+                element.style.transform = 'scale(1)';
+                element.style.color = '';
+            }, 200);
+        }
+    }
+
+    function updateActionTableFromRecentActions(recentActions) {
+        recentActions.forEach(action => {
+            const actionRow = document.querySelector(`[data-action-id="${action.id}"]`);
+            if (actionRow) {
+                // Update status if it changed
+                const statusElement = actionRow.querySelector('.action-status');
+                const currentStatus = statusElement.textContent.trim().toLowerCase();
+
+                if (currentStatus !== action.status) {
+                    statusElement.innerHTML = `<span class="badge ${getBadgeClass(action.status)}">${action.status}</span>`;
+
+                    // Add flash effect for status change
+                    actionRow.style.backgroundColor = '#e3f2fd';
+                    setTimeout(() => {
+                        actionRow.style.backgroundColor = '';
+                    }, 2000);
+
+                    // Show notification for completed/failed actions
+                    if (action.status === 'completed') {
+                        if (window.realTimeManager) {
+                            window.realTimeManager.showNotification(
+                                'success',
+                                'Action Completed',
+                                `${action.action_type} on ${action.device_name} completed successfully`,
+                                4000
+                            );
+                        }
+                    } else if (action.status === 'failed' || action.status === 'timeout') {
+                        if (window.realTimeManager) {
+                            window.realTimeManager.showNotification(
+                                'error',
+                                'Action Failed',
+                                `${action.action_type} on ${action.device_name} failed`,
+                                6000
+                            );
+                        }
+                    }
+                }
+
+                // Update duration for running actions
+                if (action.status === 'pending' || action.status === 'sent' || action.status === 'acknowledged') {
+                    const durationElement = actionRow.querySelector('.action-duration');
+                    if (durationElement) {
+                        durationElement.textContent = getActionDuration(action.created_at);
+                    }
+                }
+            }
+        });
+    }
+
+    function getBadgeClass(status) {
+        const statusMap = {
+            'completed': 'success',
+            'failed': 'error',
+            'timeout': 'error',
+            'pending': 'warning',
+            'sent': 'info',
+            'acknowledged': 'info'
+        };
+        return statusMap[status] || 'info';
+    }
+
+    function checkForActionChanges(data) {
+        // Store previous values to detect changes
+        if (!window.previousActionData) {
+            window.previousActionData = data.actions || {};
+            return;
+        }
+
+        const prev = window.previousActionData;
+        const current = data.actions || {};
+
+        // Check for new completed actions
+        if (current.completed_today > prev.completed_today) {
+            const diff = current.completed_today - prev.completed_today;
+            // Visual feedback already handled in updateActionTableFromRecentActions
+        }
+
+        // Check for new failed actions
+        if (current.failed_today > prev.failed_today) {
+            const diff = current.failed_today - prev.failed_today;
+            // Visual feedback already handled in updateActionTableFromRecentActions
+        }
+
+        // Check for pending actions taking too long
+        if (current.pending > 0) {
+            document.querySelectorAll('[data-action-id]').forEach(row => {
+                const statusElement = row.querySelector('.action-status');
+                const status = statusElement.textContent.trim().toLowerCase();
+
+                if (status === 'pending' || status === 'sent') {
+                    const createdAt = row.querySelector('.action-created').textContent;
+                    const actionTime = new Date(createdAt);
+                    const now = new Date();
+                    const diffMinutes = (now - actionTime) / 60000;
+
+                    if (diffMinutes > 5) { // Action pending for more than 5 minutes
+                        row.style.borderLeft = '4px solid #f39c12';
+                        row.title = 'This action has been pending for a long time';
+                    }
+                }
+            });
+        }
+
+        window.previousActionData = current;
+    }
+
+    // Enhanced refresh function using real-time manager
+    async function refreshActions() {
+        const refreshBtn = document.getElementById('refreshActionsBtn');
+        const originalText = refreshBtn.innerHTML;
+
+        refreshBtn.innerHTML = '<div class="loading-spinner"></div> Refreshing...';
+        refreshBtn.disabled = true;
+
+        try {
+            if (window.realTimeManager) {
+                const data = await window.realTimeManager.makeRequest('/dashboard/api/system-status/');
+                handleSystemStatusUpdate({ detail: data });
+
+                // Also refresh actions data specifically
+                const actionsData = await window.realTimeManager.makeRequest('/dashboard/api/actions/');
+                // Handle actions-specific data if needed
+
+                window.realTimeManager.showNotification(
+                    'success',
+                    'Refreshed',
+                    'Actions data updated successfully',
+                    3000
+                );
+            } else {
+                // Fallback refresh
+                location.reload();
+            }
+        } catch (error) {
+            if (window.realTimeManager) {
+                window.realTimeManager.showNotification(
+                    'error',
+                    'Refresh Failed',
+                    'Unable to refresh actions data',
+                    5000
+                );
+            }
+        } finally {
+            refreshBtn.innerHTML = originalText;
+            refreshBtn.disabled = false;
+        }
+    }
+
+    // Cleanup on page unload
+    window.addEventListener('beforeunload', function () {
+        if (autoRefreshInterval) {
+            clearInterval(autoRefreshInterval);
+        }
+    });
+
+    // Close modal when clicking outside
+    window.onclick = function (event) {
+        const modal = document.getElementById('actionDetailsModal');
+        if (event.target == modal) {
+            closeActionDetailsModal();
+        }
+    }
+</script>
+{% endblock %}

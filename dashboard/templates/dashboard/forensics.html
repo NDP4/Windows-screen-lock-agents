@@ -1,0 +1,1022 @@
+{% extends 'dashboard/base.html' %}
+{% load static %}
+
+{% block title %}Digital Forensics{% endblock %}
+
+{% block content %}
+<style>
+    .forensics-header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 2rem;
+        border-radius: 12px;
+        margin-bottom: 2rem;
+        box-shadow: 0 8px 32px rgba(102, 126, 234, 0.2);
+    }
+
+    .forensics-header h1 {
+        margin: 0;
+        font-size: 2.5rem;
+        font-weight: 700;
+    }
+
+    .forensics-header p {
+        margin: 0.5rem 0 0 0;
+        opacity: 0.9;
+        font-size: 1.1rem;
+    }
+
+    .forensics-stats {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 1.5rem;
+        margin-bottom: 2rem;
+    }
+
+    .forensics-stat-card {
+        background: white;
+        padding: 2rem;
+        border-radius: 12px;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+        border-left: 4px solid #667eea;
+        transition: all 0.3s ease;
+    }
+
+    .forensics-stat-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
+    }
+
+    .forensics-stat-card h3 {
+        margin: 0 0 0.5rem 0;
+        color: #4a5568;
+        font-size: 0.9rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+
+    .forensics-stat-card .number {
+        font-size: 2.5rem;
+        font-weight: 700;
+        color: #667eea;
+        margin: 0;
+    }
+
+    .forensics-main-grid {
+        display: grid;
+        grid-template-columns: 2fr 1fr;
+        gap: 2rem;
+        margin-bottom: 2rem;
+    }
+
+    .forensics-section {
+        background: white;
+        border-radius: 12px;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+        overflow: hidden;
+    }
+
+    .forensics-section-header {
+        background: #f8fafc;
+        padding: 1.5rem 2rem;
+        border-bottom: 1px solid #e2e8f0;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .forensics-section-header h3 {
+        margin: 0;
+        color: #2d3748;
+        font-size: 1.2rem;
+        font-weight: 600;
+    }
+
+    .forensics-section-content {
+        padding: 2rem;
+    }
+
+    .evidence-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+        gap: 1rem;
+    }
+
+    .evidence-item {
+        background: #f8fafc;
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
+        padding: 1rem;
+        transition: all 0.3s ease;
+        cursor: pointer;
+    }
+
+    .evidence-item:hover {
+        background: white;
+        border-color: #667eea;
+        box-shadow: 0 4px 15px rgba(102, 126, 234, 0.1);
+    }
+
+    .evidence-thumbnail {
+        width: 100%;
+        height: 120px;
+        background: #e2e8f0;
+        border-radius: 6px;
+        margin-bottom: 1rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 2rem;
+        color: #667eea;
+    }
+
+    .evidence-thumbnail img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        border-radius: 6px;
+    }
+
+    .evidence-meta {
+        font-size: 0.85rem;
+    }
+
+    .evidence-meta .device {
+        font-weight: 600;
+        color: #2d3748;
+        margin-bottom: 0.25rem;
+    }
+
+    .evidence-meta .timestamp {
+        color: #718096;
+    }
+
+    .incident-list {
+        max-height: 400px;
+        overflow-y: auto;
+    }
+
+    .incident-item {
+        padding: 1rem;
+        border-bottom: 1px solid #e2e8f0;
+        transition: background 0.2s ease;
+    }
+
+    .incident-item:hover {
+        background: #f8fafc;
+    }
+
+    .incident-title {
+        font-weight: 600;
+        color: #2d3748;
+        margin-bottom: 0.5rem;
+    }
+
+    .incident-meta {
+        display: flex;
+        gap: 1rem;
+        font-size: 0.85rem;
+        color: #718096;
+    }
+
+    .severity-badge {
+        padding: 0.25rem 0.5rem;
+        border-radius: 4px;
+        font-size: 0.75rem;
+        font-weight: 600;
+        text-transform: uppercase;
+    }
+
+    .severity-low {
+        background: #d4edda;
+        color: #155724;
+    }
+
+    .severity-medium {
+        background: #fff3cd;
+        color: #856404;
+    }
+
+    .severity-high {
+        background: #f8d7da;
+        color: #721c24;
+    }
+
+    .severity-critical {
+        background: #dc3545;
+        color: white;
+    }
+
+    .forensics-controls {
+        background: white;
+        padding: 1.5rem 2rem;
+        border-radius: 12px;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+        margin-bottom: 2rem;
+        display: flex;
+        gap: 1rem;
+        align-items: center;
+        flex-wrap: wrap;
+    }
+
+    .forensics-controls label {
+        font-weight: 600;
+        color: #4a5568;
+        margin-right: 0.5rem;
+    }
+
+    .forensics-controls select,
+    .forensics-controls input {
+        padding: 0.5rem 1rem;
+        border: 1px solid #e2e8f0;
+        border-radius: 6px;
+        font-size: 0.9rem;
+    }
+
+    .btn-forensics {
+        background: #667eea;
+        color: white;
+        padding: 0.75rem 1.5rem;
+        border: none;
+        border-radius: 6px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.3s ease;
+    }
+
+    .btn-forensics:hover {
+        background: #5a6fd8;
+        transform: translateY(-1px);
+    }
+
+    .timeline-view {
+        background: white;
+        border-radius: 12px;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+        margin-top: 2rem;
+    }
+
+    .timeline-header {
+        background: #f8fafc;
+        padding: 1.5rem 2rem;
+        border-bottom: 1px solid #e2e8f0;
+    }
+
+    .timeline-content {
+        padding: 2rem;
+        max-height: 500px;
+        overflow-y: auto;
+    }
+
+    .timeline-item {
+        display: flex;
+        gap: 1rem;
+        margin-bottom: 1.5rem;
+        padding-bottom: 1.5rem;
+        border-bottom: 1px solid #e2e8f0;
+    }
+
+    .timeline-item:last-child {
+        border-bottom: none;
+    }
+
+    .timeline-icon {
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        background: #667eea;
+        color: white;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 600;
+        font-size: 0.8rem;
+        flex-shrink: 0;
+    }
+
+    .timeline-content-item {
+        flex: 1;
+    }
+
+    .timeline-title {
+        font-weight: 600;
+        color: #2d3748;
+        margin-bottom: 0.25rem;
+    }
+
+    .timeline-description {
+        color: #718096;
+        font-size: 0.9rem;
+        margin-bottom: 0.5rem;
+    }
+
+    .timeline-meta {
+        font-size: 0.8rem;
+        color: #a0aec0;
+    }
+
+    .modal-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.5);
+        display: none;
+        align-items: center;
+        justify-content: center;
+        z-index: 10000;
+    }
+
+    .modal-content {
+        background: white;
+        border-radius: 12px;
+        padding: 2rem;
+        max-width: 800px;
+        max-height: 80vh;
+        overflow-y: auto;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+    }
+
+    .loading-spinner {
+        display: inline-block;
+        width: 20px;
+        height: 20px;
+        border: 2px solid #f3f3f3;
+        border-top: 2px solid #667eea;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+        0% {
+            transform: rotate(0deg);
+        }
+
+        100% {
+            transform: rotate(360deg);
+        }
+    }
+
+    .refresh-btn {
+        background: none;
+        border: none;
+        color: #667eea;
+        cursor: pointer;
+        font-size: 1.1rem;
+        padding: 0.5rem;
+        border-radius: 4px;
+        transition: background 0.2s ease;
+    }
+
+    .refresh-btn:hover {
+        background: rgba(102, 126, 234, 0.1);
+    }
+
+    @media (max-width: 768px) {
+        .forensics-main-grid {
+            grid-template-columns: 1fr;
+        }
+
+        .forensics-stats {
+            grid-template-columns: repeat(2, 1fr);
+        }
+
+        .evidence-grid {
+            grid-template-columns: 1fr;
+        }
+    }
+</style>
+
+<!-- Forensics Header -->
+<div class="forensics-header">
+    <h1>🔍 Digital Forensics Investigation</h1>
+    <p>Advanced evidence collection, analysis, and incident investigation dashboard</p>
+</div>
+
+<!-- Statistics Cards -->
+<div class="forensics-stats">
+    <div class="forensics-stat-card">
+        <h3>Evidence Collected</h3>
+        <div class="number">{{ total_screenshots }}</div>
+    </div>
+    <div class="forensics-stat-card">
+        <h3>Security Incidents</h3>
+        <div class="number">{{ total_incidents }}</div>
+    </div>
+    <div class="forensics-stat-card">
+        <h3>Audit Log Entries</h3>
+        <div class="number">{{ total_audit_logs }}</div>
+    </div>
+    <div class="forensics-stat-card">
+        <h3>Active Investigations</h3>
+        <div class="number">3</div>
+    </div>
+</div>
+
+<!-- Forensics Controls -->
+<div class="forensics-controls">
+    <label for="timeRange">Time Range:</label>
+    <select id="timeRange" onchange="updateTimeRange(this.value)">
+        <option value="1" {% if days_filter == 1 %}selected{% endif %}>Last 24 Hours</option>
+        <option value="7" {% if days_filter == 7 %}selected{% endif %}>Last 7 Days</option>
+        <option value="30" {% if days_filter == 30 %}selected{% endif %}>Last 30 Days</option>
+        <option value="90" {% if days_filter == 90 %}selected{% endif %}>Last 90 Days</option>
+    </select>
+
+    <label for="deviceFilter">Device:</label>
+    <select id="deviceFilter">
+        <option value="">All Devices</option>
+    </select>
+
+    <label for="evidenceType">Evidence Type:</label>
+    <select id="evidenceType">
+        <option value="">All Types</option>
+        <option value="screenshot">Screenshots</option>
+        <option value="audit_log">Audit Logs</option>
+        <option value="incident">Incidents</option>
+    </select>
+
+    <button class="btn-forensics" onclick="refreshForensicsData()">
+        <span id="refreshIcon">🔄</span> Refresh Data
+    </button>
+
+    <button class="btn-forensics" onclick="exportEvidence()">
+        📥 Export Evidence
+    </button>
+</div>
+
+<!-- Main Content Grid -->
+<div class="forensics-main-grid">
+    <!-- Evidence Collection -->
+    <div class="forensics-section">
+        <div class="forensics-section-header">
+            <h3>📷 Recent Evidence</h3>
+            <button class="refresh-btn" onclick="loadScreenshots()" title="Refresh Evidence">
+                <span id="evidenceRefreshIcon">🔄</span>
+            </button>
+        </div>
+        <div class="forensics-section-content">
+            <div id="evidenceGrid" class="evidence-grid">
+                {% for screenshot in recent_screenshots %}
+                <div class="evidence-item" onclick="viewEvidenceDetail('{{ screenshot.screenshot_id }}')">
+                    <div class="evidence-thumbnail">
+                        📷
+                    </div>
+                    <div class="evidence-meta">
+                        <div class="device">{{ screenshot.device.name|default:"Unknown Device" }}</div>
+                        <div class="timestamp">{{ screenshot.taken_at|date:"M d, H:i" }}</div>
+                        <div style="font-size: 0.75rem; color: #a0aec0; margin-top: 0.25rem;">
+                            Hash: {{ screenshot.file_hash|slice:":12" }}...
+                        </div>
+                    </div>
+                </div>
+                {% empty %}
+                <div style="grid-column: 1 / -1; text-align: center; color: #718096; padding: 2rem;">No evidence found
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Security Incidents -->
+    <div class="forensics-section">
+        <div class="forensics-section-header">
+            <h3>🚨 Security Incidents</h3>
+            <button class="refresh-btn" onclick="loadIncidents()" title="Refresh Incidents">
+                <span id="incidentRefreshIcon">🔄</span>
+            </button>
+        </div>
+        <div class="forensics-section-content">
+            <div id="incidentsList" class="incident-list">
+                {% for incident in recent_incidents %}
+                <div class="incident-item">
+                    <div class="incident-title">{{ incident.title }}</div>
+                    <div class="incident-meta">
+                        <span class="severity-badge severity-{{ incident.severity|lower }}">{{ incident.severity
+                            }}</span>
+                        <span>{{ incident.device.name|default:"Unknown Device" }}</span>
+                        <span>{{ incident.created_at|date:"M d, H:i" }}</span>
+                    </div>
+                </div>
+                {% empty %}
+                <div style="text-align: center; color: #718096; padding: 2rem;">No incidents found</div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Timeline View -->
+<div class="timeline-view">
+    <div class="timeline-header">
+        <h3>📊 Forensics Timeline</h3>
+    </div>
+    <div class="timeline-content">
+        <div id="timelineContainer">
+            <!-- Timeline events will be loaded here -->
+            <div class="loading-spinner" style="margin: 2rem auto;"></div>
+        </div>
+    </div>
+</div>
+
+<!-- Evidence Detail Modal -->
+<div id="evidenceModal" class="modal-overlay" onclick="closeEvidenceModal(event)">
+    <div class="modal-content" onclick="event.stopPropagation()">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+            <h3 style="margin: 0;">Evidence Details</h3>
+            <button onclick="closeEvidenceModal()"
+                style="background: none; border: none; font-size: 1.5rem; cursor: pointer;">×</button>
+        </div>
+        <div id="evidenceDetails">
+            <!-- Evidence details will be loaded here -->
+        </div>
+    </div>
+</div>
+
+<script>
+    // Forensics JavaScript Functions
+    let currentPage = 1;
+    let isLoading = false;
+
+    // Initialize forensics dashboard
+    document.addEventListener('DOMContentLoaded', function () {
+        loadTimeline();
+        loadDeviceFilter();
+    });
+
+    function loadScreenshots() {
+        if (isLoading) return;
+        isLoading = true;
+
+        const deviceFilter = document.getElementById('deviceFilter').value;
+        const evidenceType = document.getElementById('evidenceType').value;
+
+        let url = '/api/forensics/screenshots/?page=1&limit=12';
+        if (deviceFilter) url += `&device_id=${deviceFilter}`;
+
+        fetch(url)
+            .then(response => response.json())
+            .then(data => {
+                const grid = document.getElementById('evidenceGrid');
+
+                if (data.screenshots && data.screenshots.length > 0) {
+                    grid.innerHTML = data.screenshots.map(screenshot => `
+                    <div class="evidence-item" onclick="viewEvidenceDetail('${screenshot.id}')">
+                        <div class="evidence-thumbnail">
+                            ${screenshot.thumbnail_url ?
+                            `<img src="${screenshot.thumbnail_url}" alt="Screenshot" />` :
+                            '📷'
+                        }
+                        </div>
+                        <div class="evidence-meta">
+                            <div class="device">${screenshot.device_name}</div>
+                            <div class="timestamp">${formatTimestamp(screenshot.taken_at)}</div>
+                            <div style="font-size: 0.75rem; color: #a0aec0; margin-top: 0.25rem;">
+                                Hash: ${screenshot.file_hash.substring(0, 12)}...
+                            </div>
+                        </div>
+                    </div>
+                `).join('');
+                } else {
+                    grid.innerHTML = '<div style="grid-column: 1 / -1; text-align: center; color: #718096; padding: 2rem;">No evidence found</div>';
+                }
+            })
+            .catch(error => {
+                console.error('Error loading screenshots:', error);
+                document.getElementById('evidenceGrid').innerHTML =
+                    '<div style="grid-column: 1 / -1; text-align: center; color: #e53e3e; padding: 2rem;">Error loading evidence</div>';
+            })
+            .finally(() => {
+                isLoading = false;
+            });
+    }
+
+    function loadIncidents() {
+        fetch('/api/forensics/incidents/')
+            .then(response => response.json())
+            .then(data => {
+                const list = document.getElementById('incidentsList');
+
+                if (data.incidents && data.incidents.length > 0) {
+                    list.innerHTML = data.incidents.map(incident => `
+                    <div class="incident-item">
+                        <div class="incident-title">${incident.title}</div>
+                        <div class="incident-meta">
+                            <span class="severity-badge severity-${incident.severity}">${incident.severity}</span>
+                            <span>${incident.device || 'Unknown Device'}</span>
+                            <span>${formatTimestamp(incident.created_at)}</span>
+                        </div>
+                    </div>
+                `).join('');
+                } else {
+                    list.innerHTML = '<div style="text-align: center; color: #718096; padding: 2rem;">No incidents found</div>';
+                }
+            })
+            .catch(error => {
+                console.error('Error loading incidents:', error);
+                document.getElementById('incidentsList').innerHTML =
+                    '<div style="text-align: center; color: #e53e3e; padding: 2rem;">Error loading incidents</div>';
+            });
+    }
+
+    function loadTimeline() {
+        const days = document.getElementById('timeRange').value;
+
+        fetch(`/api/forensics/timeline/?days=${days}`)
+            .then(response => response.json())
+            .then(data => {
+                const container = document.getElementById('timelineContainer');
+
+                if (data.timeline && data.timeline.length > 0) {
+                    container.innerHTML = data.timeline.map(event => `
+                    <div class="timeline-item">
+                        <div class="timeline-icon">
+                            ${event.type === 'screenshot' ? '📷' :
+                            event.type === 'incident' ? '🚨' : '📋'}
+                        </div>
+                        <div class="timeline-content-item">
+                            <div class="timeline-title">${event.title}</div>
+                            <div class="timeline-description">${event.description || ''}</div>
+                            <div class="timeline-meta">
+                                ${event.device ? `Device: ${event.device} • ` : ''}
+                                ${formatTimestamp(event.timestamp)}
+                            </div>
+                        </div>
+                    </div>
+                `).join('');
+                } else {
+                    container.innerHTML = '<div style="text-align: center; color: #718096; padding: 2rem;">No timeline events found</div>';
+                }
+            })
+            .catch(error => {
+                console.error('Error loading timeline:', error);
+                document.getElementById('timelineContainer').innerHTML =
+                    '<div style="text-align: center; color: #e53e3e; padding: 2rem;">Error loading timeline</div>';
+            });
+    }
+
+    function loadDeviceFilter() {
+        // Load available devices for filter
+        fetch('/api/devices/')
+            .then(response => response.json())
+            .then(data => {
+                const select = document.getElementById('deviceFilter');
+                const currentValue = select.value;
+
+                select.innerHTML = '<option value="">All Devices</option>';
+
+                if (data.devices) {
+                    data.devices.forEach(device => {
+                        const option = document.createElement('option');
+                        option.value = device.device_id;
+                        option.textContent = device.name;
+                        if (device.device_id === currentValue) {
+                            option.selected = true;
+                        }
+                        select.appendChild(option);
+                    });
+                }
+            })
+            .catch(error => {
+                console.error('Error loading devices:', error);
+            });
+    }
+
+    function viewEvidenceDetail(evidenceId) {
+        const modal = document.getElementById('evidenceModal');
+        const details = document.getElementById('evidenceDetails');
+
+        details.innerHTML = '<div class="loading-spinner" style="margin: 2rem auto;"></div>';
+        modal.style.display = 'flex';
+
+        fetch(`/api/forensics/evidence/${evidenceId}/`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    throw new Error(data.error);
+                }
+
+                details.innerHTML = `
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2rem;">
+                    <div>
+                        <h4>Evidence Information</h4>
+                        <table style="width: 100%; border-collapse: collapse;">
+                            <tr><td style="padding: 0.5rem; border-bottom: 1px solid #e2e8f0; font-weight: 600;">Device:</td><td style="padding: 0.5rem; border-bottom: 1px solid #e2e8f0;">${data.device_name}</td></tr>
+                            <tr><td style="padding: 0.5rem; border-bottom: 1px solid #e2e8f0; font-weight: 600;">Timestamp:</td><td style="padding: 0.5rem; border-bottom: 1px solid #e2e8f0;">${formatTimestamp(data.taken_at)}</td></tr>
+                            <tr><td style="padding: 0.5rem; border-bottom: 1px solid #e2e8f0; font-weight: 600;">File Size:</td><td style="padding: 0.5rem; border-bottom: 1px solid #e2e8f0;">${formatFileSize(data.file_size)}</td></tr>
+                            <tr><td style="padding: 0.5rem; border-bottom: 1px solid #e2e8f0; font-weight: 600;">SHA256 Hash:</td><td style="padding: 0.5rem; border-bottom: 1px solid #e2e8f0; font-family: monospace; font-size: 0.8rem;">${data.file_hash}</td></tr>
+                        </table>
+                    </div>
+                    <div>
+                        <h4>Evidence Preview</h4>
+                        ${data.image_url ?
+                        `<img src="${data.image_url}" style="max-width: 100%; border: 1px solid #e2e8f0; border-radius: 8px;" alt="Evidence Screenshot" />` :
+                        '<div style="background: #f8fafc; padding: 2rem; text-align: center; border-radius: 8px; color: #718096;">No preview available</div>'
+                    }
+                    </div>
+                </div>
+                <div style="margin-top: 1.5rem; text-align: right;">
+                    <button class="btn-forensics" onclick="downloadEvidence('${data.id}')">📥 Download Evidence</button>
+                </div>
+            `;
+            })
+            .catch(error => {
+                console.error('Error loading evidence details:', error);
+                details.innerHTML = '<div style="text-align: center; color: #e53e3e; padding: 2rem;">Error loading evidence details</div>';
+            });
+    }
+
+    function closeEvidenceModal(event) {
+        if (!event || event.target.id === 'evidenceModal') {
+            document.getElementById('evidenceModal').style.display = 'none';
+        }
+    }
+
+    function updateTimeRange(days) {
+        window.location.href = `?days=${days}`;
+    }
+
+    function refreshForensicsData() {
+        const refreshIcon = document.getElementById('refreshIcon');
+        refreshIcon.style.animation = 'spin 1s linear infinite';
+
+        loadScreenshots();
+        loadIncidents();
+        loadTimeline();
+
+        setTimeout(() => {
+            refreshIcon.style.animation = '';
+        }, 1000);
+    }
+
+    function exportEvidence() {
+        // Implement evidence export functionality
+        if (typeof realTimeManager !== 'undefined') {
+            realTimeManager.showNotification('info', 'Export Started', 'Evidence export has been initiated. You will be notified when ready.');
+        } else {
+            alert('Evidence export has been initiated. You will be notified when ready.');
+        }
+    }
+
+    function downloadEvidence(evidenceId) {
+        window.open(`/api/forensics/evidence/${evidenceId}/download/`, '_blank');
+    }
+
+    function formatTimestamp(timestamp) {
+        const date = new Date(timestamp);
+        return date.toLocaleString();
+    }
+
+    function formatFileSize(bytes) {
+        if (!bytes) return '0 Bytes';
+        const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+        const i = parseInt(Math.floor(Math.log(bytes) / Math.log(1024)));
+        return Math.round(bytes / Math.pow(1024, i) * 100) / 100 + ' ' + sizes[i];
+    }
+
+    // Listen for device filter changes
+    document.getElementById('deviceFilter').addEventListener('change', function () {
+        loadScreenshots();
+    });
+
+    // Listen for evidence type filter changes
+    document.getElementById('evidenceType').addEventListener('change', function () {
+        loadScreenshots();
+    });
+</script>
+
+<div class="dashboard-section">
+    <h3>Audit Trail</h3>
+    <div class="table-container">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Time</th>
+                    <th>User</th>
+                    <th>Action</th>
+                    <th>Resource</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for log in audit_logs %}
+                <tr>
+                    <td>{{ log.timestamp|date:"M d, H:i" }}</td>
+                    <td>{{ log.user.username|default:"System" }}</td>
+                    <td>
+                        <span
+                            class="badge badge-{% if log.action == 'DELETE' %}danger{% elif log.action == 'CREATE' %}success{% else %}info{% endif %}">
+                            {{ log.action }}
+                        </span>
+                    </td>
+                    <td>{{ log.resource_type|title }} #{{ log.resource_id }}</td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="4">No audit logs available</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+</div>
+
+<div class="dashboard-section" style="margin-top: 2rem;">
+    <h3>Screenshot Gallery</h3>
+    <div class="screenshot-grid">
+        {% for screenshot in screenshots|slice:":8" %}
+        <div class="screenshot-card">
+            <div class="screenshot-placeholder">
+                <i class="icon">📷</i>
+                <p>{{ screenshot.device.device_name|default:"Unknown Device" }}</p>
+                <small>{{ screenshot.taken_at|date:"M d, H:i" }}</small>
+            </div>
+        </div>
+        {% empty %}
+        <div class="empty-state">
+            <p>No screenshots available</p>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+<style>
+    .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 1rem;
+        margin-bottom: 2rem;
+    }
+
+    .stat-card {
+        background: white;
+        padding: 1.5rem;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        text-align: center;
+    }
+
+    .stat-card h3 {
+        margin: 0 0 0.5rem 0;
+        color: #666;
+        font-size: 0.9rem;
+        font-weight: 500;
+    }
+
+    .stat-number {
+        font-size: 2rem;
+        font-weight: bold;
+        color: #2c3e50;
+    }
+
+    .dashboard-grid {
+        display: grid;
+        grid-template-columns: 2fr 1fr;
+        gap: 2rem;
+    }
+
+    .dashboard-section {
+        background: white;
+        padding: 1.5rem;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    }
+
+    .dashboard-section h3 {
+        margin: 0 0 1rem 0;
+        color: #2c3e50;
+    }
+
+    .table-container {
+        overflow-x: auto;
+    }
+
+    .data-table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+
+    .data-table th,
+    .data-table td {
+        padding: 0.75rem;
+        text-align: left;
+        border-bottom: 1px solid #ddd;
+    }
+
+    .data-table th {
+        background: #f8f9fa;
+        font-weight: 600;
+        color: #2c3e50;
+    }
+
+    .badge {
+        padding: 0.25rem 0.5rem;
+        border-radius: 4px;
+        font-size: 0.75rem;
+        font-weight: 500;
+    }
+
+    .badge-info {
+        background: #d1ecf1;
+        color: #0c5460;
+    }
+
+    .badge-success {
+        background: #d4edda;
+        color: #155724;
+    }
+
+    .badge-danger {
+        background: #f8d7da;
+        color: #721c24;
+    }
+
+    .btn {
+        padding: 0.25rem 0.75rem;
+        border: none;
+        border-radius: 4px;
+        background: #007bff;
+        color: white;
+        cursor: pointer;
+        font-size: 0.8rem;
+        margin-right: 0.25rem;
+    }
+
+    .btn:hover {
+        background: #0056b3;
+    }
+
+    .btn-sm {
+        padding: 0.2rem 0.5rem;
+        font-size: 0.75rem;
+    }
+
+    .btn-secondary {
+        background: #6c757d;
+    }
+
+    .btn-secondary:hover {
+        background: #545b62;
+    }
+
+    .screenshot-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+        gap: 1rem;
+        margin-top: 1rem;
+    }
+
+    .screenshot-card {
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        overflow: hidden;
+    }
+
+    .screenshot-placeholder {
+        padding: 2rem;
+        text-align: center;
+        background: #f8f9fa;
+        min-height: 150px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+    }
+
+    .screenshot-placeholder .icon {
+        font-size: 2rem;
+        margin-bottom: 0.5rem;
+    }
+
+    .screenshot-placeholder p {
+        margin: 0.5rem 0;
+        font-weight: 500;
+    }
+
+    .screenshot-placeholder small {
+        color: #666;
+    }
+
+    .empty-state {
+        grid-column: 1 / -1;
+        text-align: center;
+        padding: 2rem;
+        color: #666;
+    }
+
+    @media (max-width: 768px) {
+        .dashboard-grid {
+            grid-template-columns: 1fr;
+        }
+
+        .stats-grid {
+            grid-template-columns: repeat(2, 1fr);
+        }
+
+        .screenshot-grid {
+            grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+        }
+    }
+</style>
+{% endblock %}

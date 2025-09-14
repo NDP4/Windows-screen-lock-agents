@@ -1,0 +1,388 @@
+{% extends 'dashboard/base.html' %}
+
+{% block title %}Policy Management{% endblock %}
+
+{% block content %}
+<div class="content-card">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+        <div>
+            <h2>Policy Management</h2>
+            <p>Create, manage, and assign security policies to devices and groups.</p>
+        </div>
+        <div>
+            <button class="btn btn-primary" onclick="showCreatePolicyModal()" id="createPolicyBtn">
+                ➕ Create Policy
+            </button>
+        </div>
+    </div>
+
+    <!-- Policy Statistics -->
+    <div class="stats-grid" style="margin-bottom: 20px;">
+        <div class="stat-card">
+            <h3 id="totalPolicies">{{ policies.count }}</h3>
+            <p>Total Policies</p>
+        </div>
+        <div class="stat-card">
+            <h3 id="activePolicies">{{ active_policies_count }}</h3>
+            <p>Active Policies</p>
+        </div>
+        <div class="stat-card">
+            <h3 id="assignedDevices">{{ assigned_devices_count }}</h3>
+            <p>Assigned Devices</p>
+        </div>
+        <div class="stat-card">
+            <h3 id="policyTemplates">{{ templates_count }}</h3>
+            <p>Templates</p>
+        </div>
+    </div>
+
+    <!-- Policies Table -->
+    <div class="table-container">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Policy Name</th>
+                    <th>Scope</th>
+                    <th>Priority</th>
+                    <th>Assignments</th>
+                    <th>Status</th>
+                    <th>Modified</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody id="policiesTableBody">
+                {% for policy in policies %}
+                <tr data-policy-id="{{ policy.id }}" class="policy-row">
+                    <td>
+                        <strong>{{ policy.name }}</strong>
+                        {% if policy.description %}
+                        <br><small style="color: #666;">{{ policy.description|truncatechars:80 }}</small>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <span class="badge scope-{{ policy.scope }}">{{ policy.get_scope_display }}</span>
+                    </td>
+                    <td>
+                        <span class="priority-badge priority-{{ policy.priority|default:0 }}">{{
+                            policy.priority|default:0 }}</span>
+                    </td>
+                    <td>
+                        <span class="assignment-count" id="assignments-{{ policy.id }}">
+                            {{ policy.assignments.count }} device(s)
+                        </span>
+                    </td>
+                    <td>
+                        {% if policy.is_active %}
+                        <span class="badge success">Active</span>
+                        {% else %}
+                        <span class="badge inactive">Inactive</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <small>{{ policy.updated_at|date:"M d, Y" }}<br>{{ policy.updated_at|time:"H:i" }}</small>
+                    </td>
+                    <td>
+                        <div class="action-buttons">
+                            <button class="btn btn-sm btn-primary" onclick="viewPolicyDetails({{ policy.id }})">
+                                👁️ View
+                            </button>
+                        </div>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="7" style="text-align: center; padding: 40px; color: #666;">
+                        No policies found. <a href="#" onclick="showCreatePolicyModal()">Create your first policy</a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Create Policy Modal -->
+<div id="policyModal" class="modal" style="display: none;">
+    <div class="modal-content" style="max-width: 600px;">
+        <div class="modal-header">
+            <h3 id="policyModalTitle">Create New Policy</h3>
+            <span class="close" onclick="closePolicyModal()">&times;</span>
+        </div>
+        <div class="modal-body">
+            <form id="policyForm">
+                <div class="form-group">
+                    <label for="policyName">Policy Name *</label>
+                    <input type="text" id="policyName" required>
+                </div>
+                <div class="form-group">
+                    <label for="policyDescription">Description</label>
+                    <textarea id="policyDescription" rows="3"></textarea>
+                </div>
+                <div class="form-group">
+                    <label for="policyScope">Scope *</label>
+                    <select id="policyScope" required>
+                        <option value="global">Global</option>
+                        <option value="group">Device Group</option>
+                        <option value="device">Individual Device</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="policyPriority">Priority</label>
+                    <input type="number" id="policyPriority" value="0" min="0" max="100">
+                    <small>Higher numbers have higher priority</small>
+                </div>
+                <div class="form-group">
+                    <label for="idleTimeout">Idle Timeout (seconds)</label>
+                    <input type="number" id="idleTimeout" value="300" min="30" max="86400">
+                </div>
+                <div class="form-group">
+                    <label>
+                        <input type="checkbox" id="manualLockEnabled" checked>
+                        Enable Manual Lock
+                    </label>
+                </div>
+            </form>
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" onclick="closePolicyModal()">Cancel</button>
+            <button type="button" class="btn btn-primary" onclick="savePolicyForm()">Save Policy</button>
+        </div>
+    </div>
+</div>
+
+<!-- Policy Details Modal -->
+<div id="policyDetailsModal" class="modal" style="display: none;">
+    <div class="modal-content" style="max-width: 700px;">
+        <div class="modal-header">
+            <h3 id="policyDetailsTitle">Policy Details</h3>
+            <span class="close" onclick="closePolicyDetailsModal()">&times;</span>
+        </div>
+        <div class="modal-body" id="policyDetailsContent">
+            <!-- Content will be populated by JavaScript -->
+        </div>
+        <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" onclick="closePolicyDetailsModal()">Close</button>
+        </div>
+    </div>
+</div>
+
+<style>
+    /* Policy Management Styles */
+    .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 20px;
+        margin-bottom: 30px;
+    }
+
+    .stat-card {
+        background: white;
+        padding: 20px;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        text-align: center;
+    }
+
+    .stat-card h3 {
+        font-size: 2rem;
+        margin: 0;
+        color: #3498db;
+    }
+
+    .badge.scope-global {
+        background: #e74c3c;
+        color: white;
+    }
+
+    .badge.scope-group {
+        background: #f39c12;
+        color: white;
+    }
+
+    .badge.scope-device {
+        background: #27ae60;
+        color: white;
+    }
+
+    .priority-badge {
+        padding: 4px 8px;
+        border-radius: 12px;
+        font-size: 12px;
+        font-weight: bold;
+    }
+
+    .priority-0 {
+        background: #bdc3c7;
+        color: #2c3e50;
+    }
+
+    .priority-1 {
+        background: #3498db;
+        color: white;
+    }
+
+    .priority-2 {
+        background: #f39c12;
+        color: white;
+    }
+
+    .priority-3 {
+        background: #e74c3c;
+        color: white;
+    }
+
+    .action-buttons {
+        display: flex;
+        gap: 5px;
+        flex-wrap: wrap;
+    }
+
+    .btn-sm {
+        padding: 4px 8px;
+        font-size: 12px;
+    }
+
+    .form-group {
+        margin-bottom: 15px;
+    }
+
+    .form-group label {
+        display: block;
+        margin-bottom: 5px;
+        font-weight: 500;
+    }
+
+    .form-group input,
+    .form-group select,
+    .form-group textarea {
+        width: 100%;
+        padding: 8px;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+    }
+
+    .form-group small {
+        color: #666;
+        font-size: 12px;
+    }
+</style>
+
+<script>
+    // Policy Management JavaScript
+    let currentPolicyId = null;
+
+    // Show create policy modal
+    function showCreatePolicyModal() {
+        currentPolicyId = null;
+        document.getElementById('policyModalTitle').textContent = 'Create New Policy';
+        document.getElementById('policyForm').reset();
+        document.getElementById('policyModal').style.display = 'block';
+    }
+
+    // Close policy modal
+    function closePolicyModal() {
+        document.getElementById('policyModal').style.display = 'none';
+    }
+
+    // Save policy form
+    function savePolicyForm() {
+        const formData = {
+            name: document.getElementById('policyName').value,
+            description: document.getElementById('policyDescription').value,
+            scope: document.getElementById('policyScope').value,
+            priority: document.getElementById('policyPriority').value,
+            idle_timeout_seconds: document.getElementById('idleTimeout').value,
+            manual_lock_enabled: document.getElementById('manualLockEnabled').checked,
+        };
+
+        const url = '/dashboard/api/policies/';
+        const method = 'POST';
+
+        fetch(url, {
+            method: method,
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+            },
+            body: JSON.stringify(formData)
+        })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    closePolicyModal();
+                    location.reload();
+                    if (window.realTimeManager) {
+                        window.realTimeManager.showNotification('success', 'Success', 'Policy created successfully');
+                    }
+                } else {
+                    if (window.realTimeManager) {
+                        window.realTimeManager.showNotification('error', 'Error', data.error || 'Failed to save policy');
+                    }
+                }
+            })
+            .catch(error => {
+                console.error('Error saving policy:', error);
+                if (window.realTimeManager) {
+                    window.realTimeManager.showNotification('error', 'Error', 'Failed to save policy');
+                }
+            });
+    }
+
+    // View policy details
+    function viewPolicyDetails(policyId) {
+        fetch(`/dashboard/api/policies/${policyId}/`)
+            .then(response => response.json())
+            .then(policy => {
+                document.getElementById('policyDetailsTitle').textContent = policy.name;
+                document.getElementById('policyDetailsContent').innerHTML = `
+                <div class="policy-details">
+                    <h4>Basic Information</h4>
+                    <p><strong>Name:</strong> ${policy.name}</p>
+                    <p><strong>Description:</strong> ${policy.description || 'None'}</p>
+                    <p><strong>Scope:</strong> ${policy.scope}</p>
+                    <p><strong>Priority:</strong> ${policy.priority}</p>
+                    <p><strong>Status:</strong> ${policy.is_active ? 'Active' : 'Inactive'}</p>
+                    
+                    <h4>Lock Settings</h4>
+                    <p><strong>Idle Timeout:</strong> ${policy.idle_timeout_seconds} seconds</p>
+                    <p><strong>Manual Lock:</strong> ${policy.manual_lock_enabled ? 'Enabled' : 'Disabled'}</p>
+                    
+                    <h4>Additional Settings</h4>
+                    <p><strong>Created:</strong> ${new Date(policy.created_at).toLocaleDateString()}</p>
+                    <p><strong>Last Modified:</strong> ${new Date(policy.updated_at).toLocaleDateString()}</p>
+                </div>
+            `;
+                document.getElementById('policyDetailsModal').style.display = 'block';
+            })
+            .catch(error => {
+                console.error('Error fetching policy details:', error);
+                if (window.realTimeManager) {
+                    window.realTimeManager.showNotification('error', 'Error', 'Failed to load policy details');
+                }
+            });
+    }
+
+    // Close policy details modal
+    function closePolicyDetailsModal() {
+        document.getElementById('policyDetailsModal').style.display = 'none';
+    }
+
+    // Close modals when clicking outside
+    window.onclick = function (event) {
+        const modals = ['policyModal', 'policyDetailsModal'];
+        modals.forEach(modalId => {
+            const modal = document.getElementById(modalId);
+            if (event.target == modal) {
+                modal.style.display = 'none';
+            }
+        });
+    }
+
+    // Initialize page
+    document.addEventListener('DOMContentLoaded', function () {
+        console.log('Policy Management Dashboard loaded');
+    });
+</script>
+
+{% csrf_token %}
+{% endblock %}

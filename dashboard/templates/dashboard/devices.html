@@ -1,0 +1,801 @@
+{% extends 'dashboard/base.html' %}
+
+{% block content %}
+<div class="content-card">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+        <div>
+            <h2>Device Management</h2>
+            <p>Manage and monitor all registered devices in the system.</p>
+        </div>
+        <div>
+            <button class="btn btn-primary" onclick="refreshDevices()" id="refreshBtn">
+                🔄 Refresh
+            </button>
+            <button class="btn btn-secondary" onclick="toggleActionHistory()">
+                📋 Action History
+            </button>
+        </div>
+    </div>
+
+    <!-- Device Statistics -->
+    <div class="stats-grid" style="margin-bottom: 20px;">
+        <div class="stat-card">
+            <h3 id="totalDevices">{{ devices.count }}</h3>
+            <p>Total Devices</p>
+        </div>
+        <div class="stat-card">
+            <h3 id="onlineDevices">{{ online_count }}</h3>
+            <p>Online</p>
+        </div>
+        <div class="stat-card">
+            <h3 id="lockedDevices">{{ locked_count }}</h3>
+            <p>Locked</p>
+        </div>
+        <div class="stat-card">
+            <h3 id="actionsToday">{{ actions_today }}</h3>
+            <p>Actions Today</p>
+        </div>
+    </div>
+
+    <!-- Filters -->
+    <div class="filter-bar" style="margin-bottom: 20px;">
+        <select id="statusFilter" onchange="filterDevices()">
+            <option value="">All Status</option>
+            <option value="online">Online</option>
+            <option value="offline">Offline</option>
+            <option value="locked">Locked</option>
+        </select>
+        <input type="text" id="searchInput" placeholder="Search devices..." onkeyup="filterDevices()">
+    </div>
+
+    <!-- Action History Panel (Hidden by default) -->
+    <div id="actionHistoryPanel" style="display: none; margin-bottom: 20px;">
+        <div class="content-card" style="background: #f8f9fa;">
+            <h4>Recent Device Actions</h4>
+            <div id="actionHistoryList">
+                <!-- Will be populated by AJAX -->
+            </div>
+        </div>
+    </div>
+
+    <table class="table" id="devicesTable">
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Hostname</th>
+                <th>Owner</th>
+                <th>Status</th>
+                <th>Last Seen</th>
+                <th>Actions</th>
+                <th>Last Action</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for device in devices %}
+            <tr data-device-id="{{ device.device_id }}" class="device-row">
+                <td>
+                    <strong>{{ device.name }}</strong>
+                    <br><small>{{ device.ip_address|default:"No IP" }}</small>
+                </td>
+                <td>{{ device.hostname }}</td>
+                <td>
+                    {% if device.owner_user %}
+                    {{ device.owner_user.full_name|default:device.owner_user.username }}
+                    {% else %}
+                    Unassigned
+                    {% endif %}
+                </td>
+                <td>
+                    <div class="status-badges">
+                        {% if device.is_online %}
+                        <span class="badge online">Online</span>
+                        {% else %}
+                        <span class="badge offline">Offline</span>
+                        {% endif %}
+                        {% if device.is_locked %}
+                        <span class="badge locked">Locked</span>
+                        {% else %}
+                        <span class="badge unlocked">Unlocked</span>
+                        {% endif %}
+                    </div>
+                </td>
+                <td>{{ device.last_seen|date:"Y-m-d H:i:s"|default:"Never" }}</td>
+                <td>
+                    <div class="action-buttons">
+                        {% if device.is_locked %}
+                        <button class="btn btn-success btn-sm"
+                            onclick="deviceAction('{{ device.device_id }}', 'unlock')" title="Unlock Device">
+                            🔓 Unlock
+                        </button>
+                        {% else %}
+                        <button class="btn btn-warning btn-sm" onclick="deviceAction('{{ device.device_id }}', 'lock')"
+                            title="Lock Device">
+                            🔒 Lock
+                        </button>
+                        {% endif %}
+
+                        <button class="btn btn-info btn-sm"
+                            onclick="deviceAction('{{ device.device_id }}', 'screenshot')" title="Take Screenshot">
+                            📸 Screenshot
+                        </button>
+
+                        {% if user.role in 'superadmin,it_admin' %}
+                        <button class="btn btn-danger btn-sm"
+                            onclick="deviceAction('{{ device.device_id }}', 'restart')" title="Restart Device">
+                            🔄 Restart
+                        </button>
+                        {% endif %}
+
+                        <button class="btn btn-secondary btn-sm" onclick="showDeviceDetails('{{ device.device_id }}')"
+                            title="View Details">
+                            ℹ️ Details
+                        </button>
+                    </div>
+                </td>
+                <td>
+                    <div id="lastAction-{{ device.device_id }}" class="last-action">
+                        <small class="text-muted">Loading...</small>
+                    </div>
+                </td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="7">No devices registered</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<!-- Device Details Modal -->
+<div id="deviceModal" class="modal" style="display: none;">
+    <div class="modal-content">
+        <span class="close" onclick="closeModal()">&times;</span>
+        <h3>Device Details</h3>
+        <div id="deviceDetailsContent">
+            <!-- Will be populated by AJAX -->
+        </div>
+    </div>
+</div>
+
+<!-- Action Confirmation Modal -->
+<div id="actionModal" class="modal" style="display: none;">
+    <div class="modal-content">
+        <span class="close" onclick="closeActionModal()">&times;</span>
+        <h3>Confirm Action</h3>
+        <div id="actionModalContent">
+            <p id="actionMessage"></p>
+            <div class="modal-actions">
+                <input type="text" id="actionReason" placeholder="Reason (optional)"
+                    style="width: 100%; margin-bottom: 10px;">
+                <button class="btn btn-primary" onclick="confirmAction()">Confirm</button>
+                <button class="btn btn-secondary" onclick="closeActionModal()">Cancel</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 15px;
+    }
+
+    .stat-card {
+        background: #f8f9fa;
+        padding: 20px;
+        border-radius: 8px;
+        text-align: center;
+        border: 1px solid #dee2e6;
+    }
+
+    .stat-card h3 {
+        margin: 0 0 5px 0;
+        font-size: 2em;
+        color: #007bff;
+    }
+
+    .stat-card p {
+        margin: 0;
+        color: #6c757d;
+    }
+
+    .filter-bar {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+    }
+
+    .filter-bar select,
+    .filter-bar input {
+        padding: 8px;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+    }
+
+    .action-buttons {
+        display: flex;
+        gap: 5px;
+        flex-wrap: wrap;
+    }
+
+    .btn-sm {
+        padding: 4px 8px;
+        font-size: 0.875em;
+    }
+
+    .status-badges {
+        display: flex;
+        gap: 5px;
+        flex-wrap: wrap;
+    }
+
+    .badge {
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-size: 0.75em;
+        font-weight: bold;
+    }
+
+    .badge.online {
+        background: #28a745;
+        color: white;
+    }
+
+    .badge.offline {
+        background: #6c757d;
+        color: white;
+    }
+
+    .badge.locked {
+        background: #dc3545;
+        color: white;
+    }
+
+    .badge.unlocked {
+        background: #28a745;
+        color: white;
+    }
+
+    .modal {
+        position: fixed;
+        z-index: 1000;
+        left: 0;
+        top: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0, 0, 0, 0.5);
+    }
+
+    .modal-content {
+        background-color: #fefefe;
+        margin: 15% auto;
+        padding: 20px;
+        border: 1px solid #888;
+        width: 80%;
+        max-width: 600px;
+        border-radius: 8px;
+    }
+
+    .close {
+        color: #aaa;
+        float: right;
+        font-size: 28px;
+        font-weight: bold;
+        cursor: pointer;
+    }
+
+    .close:hover {
+        color: black;
+    }
+
+    .last-action {
+        font-size: 0.875em;
+    }
+
+    .action-status {
+        padding: 2px 6px;
+        border-radius: 3px;
+        font-size: 0.75em;
+    }
+
+    .action-status.pending {
+        background: #ffc107;
+        color: #000;
+    }
+
+    .action-status.sent {
+        background: #17a2b8;
+        color: white;
+    }
+
+    .action-status.completed {
+        background: #28a745;
+        color: white;
+    }
+
+    .action-status.failed {
+        background: #dc3545;
+        color: white;
+    }
+</style>
+
+<script>
+    let currentActionData = null;
+
+    // Enhanced device action function with confirmation modal
+    function deviceAction(deviceId, action) {
+        currentActionData = { deviceId, action };
+
+        const actionMessages = {
+            'lock': 'Lock this device? The user will be unable to access the computer.',
+            'unlock': 'Unlock this device? The user will regain access to the computer.',
+            'screenshot': 'Take a screenshot of this device? This will capture the current screen.',
+            'restart': 'Restart this device? This will force restart the computer and may cause data loss.'
+        };
+
+        document.getElementById('actionMessage').textContent = actionMessages[action] || `Perform ${action} action?`;
+        document.getElementById('actionModal').style.display = 'block';
+    }
+
+    function confirmAction() {
+        if (!currentActionData) return;
+
+        const reason = document.getElementById('actionReason').value || `Manual ${currentActionData.action} via dashboard`;
+
+        fetch(`/api/devices/${currentActionData.deviceId}/${currentActionData.action}/`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': '{{ csrf_token }}'
+            },
+            body: JSON.stringify({
+                reason: reason
+            })
+        })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showNotification(`${currentActionData.action} command sent successfully!`, 'success');
+                    updateDeviceStatus(currentActionData.deviceId, data.action_id);
+                } else {
+                    showNotification(`Error: ${data.error}`, 'error');
+                }
+                closeActionModal();
+            })
+            .catch(error => {
+                showNotification('Error: ' + error.message, 'error');
+                closeActionModal();
+            });
+    }
+
+    function closeActionModal() {
+        document.getElementById('actionModal').style.display = 'none';
+        document.getElementById('actionReason').value = '';
+        currentActionData = null;
+    }
+
+    function showDeviceDetails(deviceId) {
+        fetch(`/api/devices/${deviceId}/`)
+            .then(response => response.json())
+            .then(device => {
+                const content = `
+            <div class="device-details">
+                <p><strong>Name:</strong> ${device.name}</p>
+                <p><strong>Hostname:</strong> ${device.hostname}</p>
+                <p><strong>IP Address:</strong> ${device.ip_address || 'Unknown'}</p>
+                <p><strong>MAC Address:</strong> ${device.mac_address || 'Unknown'}</p>
+                <p><strong>OS Version:</strong> ${device.os_version || 'Unknown'}</p>
+                <p><strong>Agent Version:</strong> ${device.agent_version || 'Unknown'}</p>
+                <p><strong>Status:</strong> ${device.status}</p>
+                <p><strong>Last Seen:</strong> ${device.last_seen || 'Never'}</p>
+                <p><strong>Owner:</strong> ${device.owner_user?.username || 'Unassigned'}</p>
+                <p><strong>Location:</strong> ${device.location || 'Unknown'}</p>
+                <p><strong>Department:</strong> ${device.department || 'Unknown'}</p>
+            </div>
+        `;
+                document.getElementById('deviceDetailsContent').innerHTML = content;
+                document.getElementById('deviceModal').style.display = 'block';
+            })
+            .catch(error => {
+                showNotification('Error loading device details: ' + error.message, 'error');
+            });
+    }
+
+    function closeModal() {
+        document.getElementById('deviceModal').style.display = 'none';
+    }
+
+    function refreshDevices() {
+        const btn = document.getElementById('refreshBtn');
+        btn.innerHTML = '🔄 Refreshing...';
+        btn.disabled = true;
+
+        // Refresh statistics
+        updateStatistics();
+
+        // Refresh last actions for all devices
+        document.querySelectorAll('.device-row').forEach(row => {
+            const deviceId = row.getAttribute('data-device-id');
+            updateLastAction(deviceId);
+        });
+
+        setTimeout(() => {
+            btn.innerHTML = '🔄 Refresh';
+            btn.disabled = false;
+            showNotification('Devices refreshed', 'success');
+        }, 1000);
+    }
+
+    function updateStatistics() {
+        fetch('/api/devices/stats/')
+            .then(response => response.json())
+            .then(data => {
+                document.getElementById('totalDevices').textContent = data.total_devices;
+                document.getElementById('onlineDevices').textContent = data.online_devices;
+                document.getElementById('lockedDevices').textContent = data.locked_devices;
+            })
+            .catch(error => console.error('Error updating statistics:', error));
+    }
+
+    function updateLastAction(deviceId) {
+        fetch(`/api/devices/actions/?device=${deviceId}&limit=1`)
+            .then(response => response.json())
+            .then(data => {
+                const lastActionEl = document.getElementById(`lastAction-${deviceId}`);
+                if (data.results && data.results.length > 0) {
+                    const action = data.results[0];
+                    const timeAgo = getTimeAgo(action.created_at);
+                    lastActionEl.innerHTML = `
+                <div>${action.action_type}</div>
+                <span class="action-status ${action.status}">${action.status}</span>
+                <div><small>${timeAgo}</small></div>
+            `;
+                } else {
+                    lastActionEl.innerHTML = '<small class="text-muted">No actions</small>';
+                }
+            })
+            .catch(error => {
+                console.error('Error updating last action:', error);
+            });
+    }
+
+    function updateDeviceStatus(deviceId, actionId) {
+        // Poll action status
+        function checkActionStatus() {
+            fetch(`/api/devices/actions/${actionId}/status/`)
+                .then(response => response.json())
+                .then(data => {
+                    updateLastAction(deviceId);
+
+                    if (data.status === 'completed' || data.status === 'failed') {
+                        showNotification(`Action ${data.status}: ${data.action_type}`,
+                            data.status === 'completed' ? 'success' : 'error');
+                    } else if (data.status === 'pending' || data.status === 'sent') {
+                        // Continue polling
+                        setTimeout(checkActionStatus, 2000);
+                    }
+                })
+                .catch(error => console.error('Error checking action status:', error));
+        }
+
+        checkActionStatus();
+    }
+
+    function toggleActionHistory() {
+        const panel = document.getElementById('actionHistoryPanel');
+        if (panel.style.display === 'none') {
+            panel.style.display = 'block';
+            loadActionHistory();
+        } else {
+            panel.style.display = 'none';
+        }
+    }
+
+    function loadActionHistory() {
+        fetch('/api/devices/actions/?limit=10')
+            .then(response => response.json())
+            .then(data => {
+                const historyList = document.getElementById('actionHistoryList');
+                if (data.results && data.results.length > 0) {
+                    historyList.innerHTML = data.results.map(action => `
+                <div class="action-history-item" style="padding: 10px; border-bottom: 1px solid #eee;">
+                    <div style="display: flex; justify-content: space-between;">
+                        <div>
+                            <strong>${action.device.name}</strong> - ${action.action_type}
+                        </div>
+                        <span class="action-status ${action.status}">${action.status}</span>
+                    </div>
+                    <div><small>By ${action.initiated_by.username} - ${getTimeAgo(action.created_at)}</small></div>
+                    ${action.reason ? `<div><small>Reason: ${action.reason}</small></div>` : ''}
+                </div>
+            `).join('');
+                } else {
+                    historyList.innerHTML = '<p>No recent actions</p>';
+                }
+            })
+            .catch(error => {
+                document.getElementById('actionHistoryList').innerHTML = '<p>Error loading action history</p>';
+            });
+    }
+
+    function filterDevices() {
+        const statusFilter = document.getElementById('statusFilter').value.toLowerCase();
+        const searchInput = document.getElementById('searchInput').value.toLowerCase();
+        const rows = document.querySelectorAll('.device-row');
+
+        rows.forEach(row => {
+            const name = row.children[0].textContent.toLowerCase();
+            const hostname = row.children[1].textContent.toLowerCase();
+            const status = row.children[3].textContent.toLowerCase();
+
+            const matchesSearch = name.includes(searchInput) || hostname.includes(searchInput);
+            const matchesStatus = !statusFilter || status.includes(statusFilter);
+
+            row.style.display = matchesSearch && matchesStatus ? '' : 'none';
+        });
+    }
+
+    function showNotification(message, type = 'info') {
+        // Create notification element
+        const notification = document.createElement('div');
+        notification.className = `notification ${type}`;
+        notification.textContent = message;
+        notification.style.cssText = `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        padding: 15px 20px;
+        border-radius: 4px;
+        color: white;
+        z-index: 1001;
+        font-weight: bold;
+    `;
+
+        // Set background color based on type
+        const colors = {
+            'success': '#28a745',
+            'error': '#dc3545',
+            'warning': '#ffc107',
+            'info': '#17a2b8'
+        };
+        notification.style.backgroundColor = colors[type] || colors.info;
+
+        document.body.appendChild(notification);
+
+        // Remove after 3 seconds
+        setTimeout(() => {
+            if (notification.parentNode) {
+                notification.parentNode.removeChild(notification);
+            }
+        }, 3000);
+    }
+
+    function getTimeAgo(dateString) {
+        const date = new Date(dateString);
+        const now = new Date();
+        const diffMs = now - date;
+        const diffMins = Math.floor(diffMs / 60000);
+        const diffHours = Math.floor(diffMs / 3600000);
+        const diffDays = Math.floor(diffMs / 86400000);
+
+        if (diffMins < 1) return 'Just now';
+        if (diffMins < 60) return `${diffMins}m ago`;
+        if (diffHours < 24) return `${diffHours}h ago`;
+        return `${diffDays}d ago`;
+    }
+
+    // Initialize page
+    document.addEventListener('DOMContentLoaded', function () {
+        // Load last actions for all devices
+        document.querySelectorAll('.device-row').forEach(row => {
+            const deviceId = row.getAttribute('data-device-id');
+            updateLastAction(deviceId);
+        });
+
+        // Subscribe to real-time updates
+        if (window.realTimeManager) {
+            window.realTimeManager.subscribeToUpdates('systemStatusUpdate', handleSystemStatusUpdate);
+        }
+
+        // Auto-refresh every 30 seconds (fallback if real-time manager fails)
+        setInterval(() => {
+            if (!window.realTimeManager || !window.realTimeManager.isConnected) {
+                updateStatistics();
+                document.querySelectorAll('.device-row').forEach(row => {
+                    const deviceId = row.getAttribute('data-device-id');
+                    updateLastAction(deviceId);
+                });
+            }
+        }, 30000);
+    });
+
+    // Handle real-time system status updates
+    function handleSystemStatusUpdate(event) {
+        const data = event.detail;
+
+        if (data.devices) {
+            // Update device statistics with animation
+            updateStatWithAnimation('totalDevices', data.devices.total);
+            updateStatWithAnimation('onlineDevices', data.devices.online);
+            updateStatWithAnimation('lockedDevices', data.devices.locked);
+        }
+
+        if (data.actions) {
+            updateStatWithAnimation('actionsToday', data.actions.today);
+        }
+
+        // Update device table if we have recent actions
+        if (data.actions && data.actions.recent) {
+            updateDeviceTableFromActions(data.actions.recent);
+        }
+
+        // Show notification for significant changes
+        checkForSignificantChanges(data);
+    }
+
+    function updateStatWithAnimation(elementId, newValue) {
+        const element = document.getElementById(elementId);
+        const currentValue = parseInt(element.textContent) || 0;
+
+        if (currentValue !== newValue) {
+            element.style.transform = 'scale(1.1)';
+            element.style.color = '#3498db';
+            element.textContent = newValue;
+
+            setTimeout(() => {
+                element.style.transform = 'scale(1)';
+                element.style.color = '';
+            }, 200);
+        }
+    }
+
+    function updateDeviceTableFromActions(recentActions) {
+        recentActions.forEach(action => {
+            const deviceRow = document.querySelector(`[data-device-id="${action.device_name}"]`);
+            if (deviceRow) {
+                // Update last action column
+                const lastActionCell = deviceRow.querySelector('.last-action');
+                if (lastActionCell) {
+                    lastActionCell.innerHTML = `
+                        <div style="font-size: 12px;">
+                            <strong>${action.action_type}</strong><br>
+                            <span class="badge ${getBadgeClass(action.status)}">${action.status}</span><br>
+                            <small style="color: #666;">${getTimeAgo(action.created_at)}</small>
+                        </div>
+                    `;
+                }
+
+                // Add visual indicator for recent actions
+                if (isRecentAction(action.created_at)) {
+                    deviceRow.style.backgroundColor = '#f8f9fa';
+                    setTimeout(() => {
+                        deviceRow.style.backgroundColor = '';
+                    }, 3000);
+                }
+            }
+        });
+    }
+
+    function getBadgeClass(status) {
+        const statusMap = {
+            'completed': 'success',
+            'failed': 'error',
+            'timeout': 'error',
+            'pending': 'warning',
+            'sent': 'info',
+            'acknowledged': 'info'
+        };
+        return statusMap[status] || 'info';
+    }
+
+    function isRecentAction(dateString) {
+        const actionTime = new Date(dateString);
+        const now = new Date();
+        return (now - actionTime) < 60000; // Less than 1 minute ago
+    }
+
+    function checkForSignificantChanges(data) {
+        // Store previous values to detect changes
+        if (!window.previousSystemData) {
+            window.previousSystemData = data;
+            return;
+        }
+
+        const prev = window.previousSystemData;
+
+        // Check for devices coming online
+        if (data.devices.online > prev.devices.online) {
+            const diff = data.devices.online - prev.devices.online;
+            if (window.realTimeManager) {
+                window.realTimeManager.showNotification(
+                    'success',
+                    'Devices Online',
+                    `${diff} device(s) came online`,
+                    5000
+                );
+            }
+        }
+
+        // Check for devices going offline
+        if (data.devices.online < prev.devices.online) {
+            const diff = prev.devices.online - data.devices.online;
+            if (window.realTimeManager) {
+                window.realTimeManager.showNotification(
+                    'warning',
+                    'Devices Offline',
+                    `${diff} device(s) went offline`,
+                    5000
+                );
+            }
+        }
+
+        // Check for failed actions
+        if (data.actions.failed_today > prev.actions.failed_today) {
+            const diff = data.actions.failed_today - prev.actions.failed_today;
+            if (window.realTimeManager) {
+                window.realTimeManager.showNotification(
+                    'error',
+                    'Action Failed',
+                    `${diff} action(s) failed today`,
+                    8000
+                );
+            }
+        }
+
+        window.previousSystemData = data;
+    }
+
+    // Enhanced refresh function using real-time manager
+    async function refreshDevices() {
+        const refreshBtn = document.getElementById('refreshBtn');
+        const originalText = refreshBtn.innerHTML;
+
+        refreshBtn.innerHTML = '<div class="loading-spinner"></div> Refreshing...';
+        refreshBtn.disabled = true;
+
+        try {
+            if (window.realTimeManager) {
+                const data = await window.realTimeManager.makeRequest('/dashboard/api/system-status/');
+                handleSystemStatusUpdate({ detail: data });
+
+                window.realTimeManager.showNotification(
+                    'success',
+                    'Refreshed',
+                    'Device data updated successfully',
+                    3000
+                );
+            } else {
+                // Fallback refresh
+                location.reload();
+            }
+        } catch (error) {
+            if (window.realTimeManager) {
+                window.realTimeManager.showNotification(
+                    'error',
+                    'Refresh Failed',
+                    'Unable to refresh device data',
+                    5000
+                );
+            }
+        } finally {
+            refreshBtn.innerHTML = originalText;
+            refreshBtn.disabled = false;
+        }
+    }
+
+    // Close modals when clicking outside
+    window.onclick = function (event) {
+        const deviceModal = document.getElementById('deviceModal');
+        const actionModal = document.getElementById('actionModal');
+
+        if (event.target == deviceModal) {
+            closeModal();
+        }
+        if (event.target == actionModal) {
+            closeActionModal();
+        }
+    }
+</script>
+{% endblock %}
